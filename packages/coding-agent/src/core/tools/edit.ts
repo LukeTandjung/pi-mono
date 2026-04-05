@@ -44,10 +44,6 @@ const editSchema = Type.Object(
 );
 
 export type EditToolInput = Static<typeof editSchema>;
-type LegacyEditToolInput = EditToolInput & {
-	oldText?: unknown;
-	newText?: unknown;
-};
 
 export interface EditToolDetails {
 	/** Unified diff of the changes made */
@@ -80,25 +76,17 @@ export interface EditToolOptions {
 	operations?: EditOperations;
 }
 
-function prepareEditArguments(input: unknown): EditToolInput {
-	if (!input || typeof input !== "object") {
-		return input as EditToolInput;
-	}
-
-	const args = input as LegacyEditToolInput;
-	if (typeof args.oldText !== "string" || typeof args.newText !== "string") {
-		return input as EditToolInput;
-	}
-
-	const edits = Array.isArray(args.edits) ? [...args.edits] : [];
-	edits.push({ oldText: args.oldText, newText: args.newText });
-	const { oldText: _oldText, newText: _newText, ...rest } = args;
-	return { ...rest, edits } as EditToolInput;
-}
-
 function validateEditInput(input: EditToolInput): { path: string; edits: Edit[] } {
 	if (!Array.isArray(input.edits) || input.edits.length === 0) {
 		throw new Error("Edit tool input is invalid. edits must contain at least one replacement.");
+	}
+	for (let i = 0; i < input.edits.length; i++) {
+		const edit = input.edits[i];
+		if (!edit || typeof edit.oldText !== "string" || typeof edit.newText !== "string") {
+			throw new Error(
+				`Edit tool input is invalid. edits[${i}] must have oldText and newText as strings.`,
+			);
+		}
 	}
 	return { path: input.path, edits: input.edits };
 }
@@ -169,7 +157,6 @@ export function createEditToolDefinition(
 			"Keep edits[].oldText as small as possible while still being unique in the file. Do not pad with large unchanged regions.",
 		],
 		parameters: editSchema,
-		prepareArguments: prepareEditArguments,
 		async execute(_toolCallId, input: EditToolInput, signal?: AbortSignal, _onUpdate?, _ctx?) {
 			const { path, edits } = validateEditInput(input);
 			const absolutePath = resolveToCwd(path, cwd);
